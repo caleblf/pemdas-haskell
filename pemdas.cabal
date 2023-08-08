@@ -1,0 +1,64 @@
+cabal-version:      3.0
+name:               pemdas
+-- The package version.
+-- See the Haskell package versioning policy (PVP) for standards
+-- guiding when and how versions should be incremented.
+-- https://pvp.haskell.org
+-- PVP summary:      +-+------- breaking API changes
+--                   | | +----- non-breaking API additions
+--                   | | | +--- code changes with no API change
+version:            0.1.0.0
+synopsis:           Command-line calculator
+description:        Calculator app and library using TeX-like notation.
+homepage:           https://github.com/caleblf/pemdas-haskell/
+bug-reports:        https://github.com/caleblf/pemdas-haskell/issues
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Caleb Lucas-Foley
+maintainer:         clucasfoley@gmail.com
+category:           Language
+extra-source-files: CHANGELOG.md
+copyright:          (c) 2023 Caleb Lucas-Foley
+
+executable pemdas
+    main-is:          Main.hs
+    -- Modules included in this executable, other than Main.
+    -- other-modules:
+    -- LANGUAGE extensions used by modules in this package.
+    -- other-extensions:
+    build-depends:
+        base ^>=4.16.4.0,
+        parsec ^>= 3.1.16.1,
+        pemdas
+    hs-source-dirs:   app
+    default-language: Haskell2010
+    ghc-options:      -Wall -Werror
+
+library
+    exposed-modules:
+        Pemdas.Functions
+        Pemdas.Parse
+        Pemdas.Types
+    -- Modules included in this library but not exported.
+    -- other-modules:
+    -- LANGUAGE extensions used by modules in this package.
+    -- other-extensions:
+    build-depends:
+        base ^>=4.16.4.0,
+        parsec ^>= 3.1.16.1
+    hs-source-dirs:   src
+    default-language: Haskell2010
+    ghc-options:      -Wall -Werror
+
+test-suite pemdas-unit-tests
+    main-is:          Main.hs
+    -- other-modules:
+    -- other-extensions:
+    type:             exitcode-stdio-1.0
+    build-depends:
+        base ^>=4.16.4.0,
+        parsec ^>= 3.1.16.1,
+        pemdas,
+        QuickCheck
+    hs-source-dirs:   test
+    default-language: Haskell2010
