@@ -32,8 +32,8 @@ To do list:
 * Support switching between floating-point and integer expressions with a CLI flag
 * Add comprehensive tests for the parser
 * Improve test coverage in general
-* Implement `Show` for `Expr` more efficiently, and allow dropping parens in 
-* Rename some internal structures (`Pemdas.Functions`, `Pemdas.Types.Language`)
+* Implement `Show` for `Expr` more efficiently, and drop parens at top level
+* Rename some badly-named internal structures (`Pemdas.Functions`, `Pemdas.Types.Language`)
 * Implement some more aggreggation methods (`max`, `argmax`, etc.)
 
 Future extensions:
