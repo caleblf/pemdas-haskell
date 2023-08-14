@@ -1,4 +1,4 @@
-module Pemdas.Functions
+module Pemdas.Definitions
     ( coreBinOps
     , floatingBinOps
     , integralBinOps
@@ -9,45 +9,46 @@ module Pemdas.Functions
     )
 where
 import Pemdas.Types
-    ( BinOp
+    ( BinOp(BinOp)
     , Function
     , Aggregation
-    , Language(Language, binOps, functions, aggregations, env)
+    , Definitions(Definitions, binOps, functions, aggregations, env)
+    , Result
     )
+import Control.Monad (when)
 
 -- Helpers
 
-cantFail2 :: (a -> b -> c) -> (a -> b -> Either String c)
-cantFail2 f x y = Right $ f x y
-
+cantFail2 :: (a -> b -> c) -> (a -> b -> Result c)
+cantFail2 f x y = return $ f x y
 
 withOptionalSubscript ::
-    String -> (Maybe a -> a -> Either String a) -> (String, Function a)
+    String -> (Maybe a -> a -> Result a) -> (String, Function a)
 withOptionalSubscript name wrappedFunc =
     (name, inner)
     where
-        inner _ (Just _) _ =
-            Left $ "\\" ++ name ++ " does not accept superscript"
         inner subscript Nothing arg =
             wrappedFunc subscript arg
+        inner _ (Just _) _ =
+            fail $ "\\" ++ name ++ " does not accept superscript"
 
 withOptionalSuperscript ::
-    String -> (Maybe a -> a -> Either String a) -> (String, Function a)
+    String -> (Maybe a -> a -> Result a) -> (String, Function a)
 withOptionalSuperscript name wrappedFunc =
     (name, inner)
     where
-        inner (Just _) _ _ =
-            Left $ "\\" ++ name ++ " does not accept subscript"
         inner Nothing superscript arg =
             wrappedFunc superscript arg
+        inner (Just _) _ _ =
+            fail $ "\\" ++ name ++ " does not accept subscript"
 
-plainOnly :: String -> (a -> Either String a) -> (String, Function a)
+plainOnly :: String -> (a -> Result a) -> (String, Function a)
 plainOnly name wrappedFunc =
     (name, inner)
     where
         inner Nothing Nothing arg = wrappedFunc arg
         inner _ _ _ =
-            Left $ "\\" ++ name ++ " does not accept subscript or superscript"
+            fail $ "\\" ++ name ++ " does not accept subscript or superscript"
 
 
 -- Function and global definitions for calculators
@@ -55,58 +56,68 @@ plainOnly name wrappedFunc =
 -- Binary operators
 coreBinOps :: Num a => [(String, BinOp a)]
 coreBinOps =
-    [ ("+", (6, cantFail2 (+)))
-    , ("-", (6, cantFail2 (-)))
-    , ("*", (7, cantFail2 (*)))
+    [ ("+", BinOp 6 (cantFail2 (+)))
+    , ("-", BinOp 6 (cantFail2 (-)))
+    , ("*", BinOp 7 (cantFail2 (*)))
     ]
+
 floatingBinOps :: Floating a => [(String, BinOp a)]
 floatingBinOps =
-    [ ("/",  (7, cantFail2 (/)))
-    , ("**", (8, cantFail2 (**)))
+    [ ("/",  BinOp 7 (cantFail2 (/)))
+    , ("**", BinOp 8 (cantFail2 (**)))
     ]
+
 integralBinOps :: Integral a => [(String, BinOp a)]
 integralBinOps =
-    [ ("%", (7, \m n -> if n == 0 then Left "modulo 0" else Right $ mod m n))
+    [ ("%"
+      , BinOp 7 (\m n -> do
+                    when (n == 0) $ fail "modulo 0"
+                    return $ mod m n))
     , ( "//"
-      , (7, \m n -> if n == 0 then Left "division by 0" else Right $ div m n)
+      , BinOp 7 (\m n -> do
+                    when (n == 0) $ fail "division by 0"
+                    return $ div m n)
       )
     , ( "^"
-      , (8, \m n -> if n < 0 then Left "negative exponent" else Right (m ^ n))
+      , BinOp 8 (\m n -> do
+                    when (n < 0) $ fail "negative exponent"
+                    return (m ^ n))
       )
     ]
 
 -- Functions
 
+-- TODO pull out some repeated logic here
 floatingFunctions :: Floating a => [(String, Function a)]
 floatingFunctions =
     [ withOptionalSuperscript "sin"
-        (\maybeSub arg ->
-            Right $ case maybeSub of
+        (\maybeSuper arg ->
+            return $ case maybeSuper of
                 Nothing -> sin arg
                 Just sub -> sin arg ** sub
         )
     , withOptionalSuperscript "cos"
-        (\maybeSub arg ->
-            Right $ case maybeSub of
+        (\maybeSuper arg ->
+            return $ case maybeSuper of
                 Nothing -> cos arg
                 Just sub -> cos arg ** sub
         )
     , withOptionalSuperscript "tan"
-        (\maybeSub arg ->
-            Right $ case maybeSub of
+        (\maybeSuper arg ->
+            return $ case maybeSuper of
                 Nothing -> tan arg
                 Just sub -> tan arg ** sub
         )
-    , plainOnly "exp" (Right <$> exp)
+    , plainOnly "exp" (return <$> exp)
     , withOptionalSuperscript "sqrt"
         (\maybeSuper arg ->
-            Right $ case maybeSuper of
+            return $ case maybeSuper of
                 Nothing -> sqrt arg
                 Just super -> arg ** (1 / super)
         )
     , withOptionalSubscript "log"
         (\maybeSub arg ->
-            Right $ case maybeSub of
+            return $ case maybeSub of
                 Nothing -> log arg
                 Just sub -> logBase sub arg
         )
@@ -122,13 +133,13 @@ floatingEnv =
 
 coreAggregations :: Num a => [(String, Aggregation a)]
 coreAggregations =
-    [ ("Sigma", Right . sum . map snd)
-    , ("Pi",    Right . product . map snd)
+    [ ("Sigma", return . sum . map snd)
+    , ("Pi",    return . product . map snd)
     ]
 
 
-doubleLanguage :: Language Double
-doubleLanguage = Language
+doubleLanguage :: Definitions Double
+doubleLanguage = Definitions
     { binOps       = coreBinOps ++ floatingBinOps
     , functions    = floatingFunctions
     , aggregations = coreAggregations

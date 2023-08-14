@@ -1,5 +1,6 @@
+{-# LANGUAGE NamedFieldPuns #-}
 module Pemdas.Parse
-    (makeExprParser)
+    (parseExpression)
 where
 
 import qualified Data.Functor.Identity
@@ -8,14 +9,31 @@ import Text.Parsec.Language (emptyDef)
 import Text.Parsec.String (Parser)
 import Text.Parsec.Char (char, string')
 import qualified Text.Parsec.Token as Token
-import Text.Parsec ( (<|>), oneOf, letter, alphaNum, many, try )
+import Text.Parsec ( (<|>), eof, oneOf, letter, alphaNum, many, parse, try )
 
 import qualified Pemdas.Types as PT
 import Text.Parsec.Perm (permute, (<$?>), (<|?>))
 
 
+-- Entrypoint
+
+parseExpression ::
+    PT.Definitions Double -> String -> Either String (PT.Expr Double)
+parseExpression language exprText =
+    do
+        let parser = do
+                parsedExpr <- makeExprParser $ PT.binOps language
+                eof
+                return parsedExpr
+            parseResult = parse parser "" exprText
+        case parseResult of
+            Left parseErr -> Left ("Parsing failed " ++ show parseErr)
+            Right expr -> Right expr
+
+
 -- Parser
 
+-- TODO clean up this definition (reduce indent level)
 makeExprParser :: [(String, PT.BinOp Double)] -> Parser (PT.Expr Double)
 makeExprParser binOps = expr
     where
@@ -76,9 +94,10 @@ makeExprParser binOps = expr
     simpleExpr =
         (PT.Literal <$> literal)
         <|> (PT.Variable <$> identifier)
-    
+
     precedenceTable :: [(String, Int)]
-    precedenceTable = [(opText, prec) | (opText, (prec, _)) <- binOps]
+    precedenceTable =
+        [(opText, opPrecedence) | (opText, PT.BinOp { PT.opPrecedence }) <- binOps]
 
     infixChain :: Parser (PT.Expr Double)
     infixChain = do
@@ -132,8 +151,8 @@ quantification =
         varName <- identifier
         _ <- string' "\\in"
         whiteSpace
-        (domainMin, domainMax) <- brackets $
-            do
+        (domainMin, domainMax) <-
+            brackets $ do
                 domainMin <- integer
                 _ <- string' ".."
                 domainMax <- integer

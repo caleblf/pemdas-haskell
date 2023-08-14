@@ -26,7 +26,14 @@ $ pemdas "\\Sigma_{x \\in [1..10]}(x ** 2) / 10"
 
 Though functional, Pemdas is a work in progress.
 
-To do list:
+To do list (internal):
+
+* Improve consistency/conventionality of record spelling throughout
+* Add comprehensive tests for the parser
+* Improve test coverage in general
+* Implement `Pemdas.Types.render` more efficiently, and allow dropping parens
+
+To do list (interface):
 
 * Add a friendly CLI (`--help`, function listing)
 * Support switching between floating-point and integer expressions with a CLI flag
@@ -34,7 +41,7 @@ To do list:
 * Improve test coverage in general
 * Implement `Show` for `Expr` more efficiently, and drop parens at top level
 * Rename some badly-named internal structures (`Pemdas.Functions`, `Pemdas.Types.Language`)
-* Implement some more aggreggation methods (`max`, `argmax`, etc.)
+* Implement more aggreggation methods (`max`, `argmax`, etc.)
 
 Future extensions:
 

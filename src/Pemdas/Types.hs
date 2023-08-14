@@ -1,18 +1,28 @@
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Pemdas.Types
     ( Expr(..)
-    , BinOp
+    , BinOp(..)
     , Function
     , FunctionApplication(..)
     , Aggregation
     , AggregationApplication(..)
+    , Definitions(..)
+    , Result(..)
     , evaluateIn
-    , Language(..)
+    , render
     )
 where
+import Control.Monad (forM)
 
 
-data Num a => Language a = Language
+newtype Result a = Result { getEither :: Either String a }
+    deriving (Eq, Show, Functor, Applicative, Monad)
+instance MonadFail Result where fail s = Result $ Left s
+
+
+data Num a => Definitions a = Definitions
     { binOps :: [(String, BinOp a)]
     , functions :: [(String, Function a)]
     , aggregations :: [(String, Aggregation a)]
@@ -28,15 +38,19 @@ data Num a => Expr a =
     | ApplyFunc (FunctionApplication a)
     | Quantified (AggregationApplication a)
 
-type BinOp a = (Int, a -> a -> Either String a)  -- (precedence, logic)
-type Function a = (Maybe a -> Maybe a -> a -> Either String a)
+data BinOp a = BinOp { opPrecedence :: Int, opFunc :: a -> a -> Result a }
+type Function a =
+    Maybe a     -- ^ Subscript argument
+    -> Maybe a  -- ^ Superscript argument
+    -> a        -- ^ Argument
+    -> Result a -- ^ Result of function, or failure if arguments were bad
 data FunctionApplication a = FunctionApplication
     { funcName :: String
     , subscriptExpr :: Maybe (Expr a)
     , superscriptExpr :: Maybe (Expr a)
     , argumentExpr :: Expr a
     }
-type Aggregation a = ([(Integer, a)] -> Either String a)
+type Aggregation a = [(Integer, a)] -> Result a
 data AggregationApplication a = AggregationApplication
     { aggName :: String
     , varName :: String
@@ -45,104 +59,84 @@ data AggregationApplication a = AggregationApplication
     , aggBody :: Expr a
     }
 
-instance (Num a, Show a) => Show (Expr a) where
-    -- Implementing this w/ showsPrec could be more efficient
-    show (Literal x) = show x
-    show (Variable name) = name
-    show (Negated expr) = "-" ++ show expr
-    show (Infix opText leftExpr rightExpr) =
-        "(" ++ show leftExpr ++ " " ++ opText ++ " " ++ show rightExpr ++ ")"
-    show
-        (ApplyFunc FunctionApplication
-            { funcName
-            , subscriptExpr
-            , superscriptExpr
-            , argumentExpr
-            }) =
-        "\\"
-        ++ funcName
-        -- TODO maybe showsPrec can simplify this?
-        ++ case subscriptExpr of
-            Nothing -> ""
-            Just (Literal x) -> "_" ++ show x
-            Just (Variable name) -> "_" ++ name
-            Just expr -> "_{" ++ show expr ++ "}"
-        ++ case superscriptExpr of
-            Nothing -> ""
-            Just (Literal x) -> "^" ++ show x
-            Just (Variable name) -> "^" ++ name
-            Just expr -> "^{" ++ show expr ++ "}"
-        ++ "(" ++ show argumentExpr ++ ")"
-    show
-        (Quantified AggregationApplication
-            { aggName
-            , varName
-            , domainMin
-            , domainMax
-            , aggBody
-            }) =
-        "\\" ++ aggName ++ "_{" ++ varName ++ " \\in ["
-        ++ show domainMin ++ ".." ++ show domainMax ++ "]}("
-        ++ show aggBody ++ ")"
+
+-- TODO Implementing this w/ a pretty printer library would offer more
+-- efficiency and options (e.g. whether to show parentheses)
+render :: (Num a, Show a) => Expr a -> String
+render (Literal x) = show x
+render (Variable name) = name
+render (Negated expr) = "-" ++ render expr
+render (Infix opText leftExpr rightExpr) =
+    "(" ++ render leftExpr ++ " " ++ opText ++ " " ++ render rightExpr ++ ")"
+render
+    (ApplyFunc FunctionApplication
+        { funcName
+        , subscriptExpr
+        , superscriptExpr
+        , argumentExpr
+        }) =
+    "\\"
+    ++ funcName
+    -- TODO maybe showsPrec can simplify this?
+    ++ case subscriptExpr of
+        Nothing -> ""
+        Just (Literal x) -> "_" ++ show x
+        Just (Variable name) -> "_" ++ name
+        Just expr -> "_{" ++ render expr ++ "}"
+    ++ case superscriptExpr of
+        Nothing -> ""
+        Just (Literal x) -> "^" ++ show x
+        Just (Variable name) -> "^" ++ name
+        Just expr -> "^{" ++ render expr ++ "}"
+    ++ "(" ++ render argumentExpr ++ ")"
+render
+    (Quantified AggregationApplication
+        { aggName
+        , varName
+        , domainMin
+        , domainMax
+        , aggBody
+        }) =
+    "\\" ++ aggName ++ "_{" ++ varName ++ " \\in ["
+    ++ show domainMin ++ ".." ++ show domainMax ++ "]}("
+    ++ render aggBody ++ ")"
 
 
-evaluateIn :: Num a => Language a -> Expr a -> Either String a
-evaluateIn (Language
-    { binOps
-    , functions
-    , aggregations
-    , env
-    }) = evalInEnv env
-    where
-    evalInEnv env' =
-        let evalExpr (Literal x) = Right x
-            evalExpr (Variable name) =
-                case lookup name env' of
-                    Just x -> Right x
-                    Nothing -> Left $ "Undefined variable: " ++ name
-            evalExpr (Negated expr) = negate <$> evalExpr expr
-            evalExpr (Infix opText leftExpr rightExpr) =
-                do
-                    opFunc <- case lookup opText binOps of
-                        Just (_, op) -> Right op
-                        Nothing -> Left $ "Unknown infix operator: " ++ opText
-                    leftArg <- evalExpr leftExpr
-                    rightArg <- evalExpr rightExpr
-                    opFunc leftArg rightArg
-            evalExpr
-                (ApplyFunc FunctionApplication
-                    { funcName
-                    , subscriptExpr
-                    , superscriptExpr
-                    , argumentExpr
-                    }) =
-                do
-                    func <- case lookup funcName functions of
-                        Just f -> Right f
-                        Nothing -> Left $ "Unknown function: " ++ funcName
-                    subscript <- evalMaybeExpr subscriptExpr
-                    superscript <- evalMaybeExpr superscriptExpr
-                    arg <- evalExpr argumentExpr
-                    func subscript superscript arg
-            evalExpr
-                (Quantified AggregationApplication
-                    { aggName
-                    , varName
-                    , domainMin
-                    , domainMax
-                    , aggBody
-                    }) =
-                do
-                    aggFunc <- case lookup aggName aggregations of
-                        Just f -> Right f
-                        Nothing -> Left $ "Unknown aggregation: " ++ aggName
-                    let domain = [domainMin..domainMax]
-                    bodyValues <-
-                        sequence
-                            [evalInEnv ((varName, fromIntegral arg):env')
-                                aggBody | arg <- domain]
-                    aggFunc $ zip domain bodyValues
-
-            evalMaybeExpr Nothing = Right Nothing
-            evalMaybeExpr (Just expr) = Just <$> evalExpr expr
-        in evalExpr
+evaluateIn :: Num a => Definitions a -> Expr a -> Result a
+evaluateIn _ (Literal x) = return x
+evaluateIn (Definitions {env}) (Variable name) =
+    case lookup name env of
+        Just x -> return x
+        Nothing -> fail $ "Undefined variable: " ++ name
+evaluateIn defs (Negated expr) = negate <$> evaluateIn defs expr
+evaluateIn defs@(Definitions {binOps}) (Infix opText leftExpr rightExpr) =
+    do
+        opFunc <- case lookup opText binOps of
+            Just (BinOp {opFunc}) -> return opFunc
+            Nothing -> fail $ "Unknown infix operator: " ++ opText
+        leftArg <- evaluateIn defs leftExpr
+        rightArg <- evaluateIn defs rightExpr
+        opFunc leftArg rightArg
+evaluateIn defs@(Definitions {functions}) (ApplyFunc funcApp) =
+    do
+        func <- case lookup (funcName funcApp) functions of
+            Just f -> return f
+            Nothing -> fail $ "Unknown function: " ++ funcName funcApp
+        let evalMaybeExpr Nothing = return Nothing
+            evalMaybeExpr (Just expr) = return <$> evaluateIn defs expr
+        subscript <- evalMaybeExpr $ subscriptExpr funcApp
+        superscript <- evalMaybeExpr $ superscriptExpr funcApp
+        arg <- evaluateIn defs $ argumentExpr funcApp
+        func subscript superscript arg
+evaluateIn defs@(Definitions {aggregations, env}) (Quantified aggregationApp) =
+    do
+        aggFunc <- case lookup (aggName aggregationApp) aggregations of
+            Just f -> return f
+            Nothing -> fail $ "Unknown aggregation: " ++ aggName aggregationApp
+        let domain = [domainMin aggregationApp..domainMax aggregationApp]
+            name = varName aggregationApp
+            bodyExpr = aggBody aggregationApp
+        bodyValues <-
+            forM domain $ \arg ->
+                evaluateIn (defs {env = (name, fromIntegral arg):env}) bodyExpr
+        aggFunc $ zip domain bodyValues

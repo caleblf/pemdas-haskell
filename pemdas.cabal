@@ -27,8 +27,7 @@ executable pemdas
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
     build-depends:
-        base ^>=4.16.4.0,
-        parsec ^>= 3.1.16.1,
+        base,
         pemdas
     hs-source-dirs:   app
     default-language: Haskell2010
@@ -36,7 +35,7 @@ executable pemdas
 
 library
     exposed-modules:
-        Pemdas.Functions
+        Pemdas.Definitions
         Pemdas.Parse
         Pemdas.Types
     -- Modules included in this library but not exported.
@@ -56,8 +55,8 @@ test-suite pemdas-unit-tests
     -- other-extensions:
     type:             exitcode-stdio-1.0
     build-depends:
-        base ^>=4.16.4.0,
-        parsec ^>= 3.1.16.1,
+        base,
+        parsec,
         pemdas,
         QuickCheck
     hs-source-dirs:   test
